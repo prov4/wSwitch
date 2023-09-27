@@ -9,7 +9,8 @@ import Cocoa
 
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
-
+    
+    var eventMonitor: Any?
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         // Insert code here to initialize your application
@@ -18,10 +19,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.center()
             window.isReleasedWhenClosed = false
         }
+        
+        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { (event) in
+                self.handleGlobalKeyboardEvent(event)
+               }
     }
 
     func applicationWillTerminate(_ aNotification: Notification) {
         // Insert code here to tear down your application
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
@@ -37,6 +45,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             
             return true
+    }
+    
+    func handleGlobalKeyboardEvent(_ event: NSEvent) {
+        if event.modifierFlags.contains(.option) && event.keyCode == 48 {
+            print("Alt + Tab pressed!")
+        }
     }
 
 }
