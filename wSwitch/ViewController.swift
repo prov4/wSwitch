@@ -11,8 +11,16 @@ class ViewController: NSViewController, NSSearchFieldDelegate {
     @IBOutlet weak var searchField: NSSearchField!
     @IBOutlet weak var windowList: NSScrollView!
     var windowHandler = WindowHandler()
-    var stackView: NSStackView!
     var allWindows: Dictionary<String, NSRunningApplication> = [:]
+    @IBOutlet weak var tableView: NSTableView!
+    var tableCell: NSTableCellView!
+    @IBOutlet weak var stackView: NSStackView!
+    
+    
+    
+    
+    var windowNameList: Array<String> = []
+    
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -20,16 +28,14 @@ class ViewController: NSViewController, NSSearchFieldDelegate {
         self.searchField.delegate = self
         self.allWindows = windowHandler.getWindowList()
         
-//        self.searchTxtField.delegate = self
-                
-        stackView = NSStackView()
-        stackView.orientation = .vertical
-        stackView.alignment = .centerX
-        stackView.distribution = .fillEqually
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-
-        windowList.documentView = stackView
-
+//        stackView = NSStackView()
+//        stackView.orientation = .vertical
+//        stackView.alignment = .centerX
+//        stackView.distribution = .fillEqually
+//        stackView.translatesAutoresizingMaskIntoConstraints = false
+        
+//        windowList.documentView = stackView
+        
         filterAndSetupAppList(name: "")
         
     }
@@ -40,10 +46,10 @@ class ViewController: NSViewController, NSSearchFieldDelegate {
         view.window?.backgroundColor = NSColor(red: 1, green: 1, blue: 1, alpha: 0.8)
     }
     
-
+    
     override var representedObject: Any? {
         didSet {
-        // Update the view, if already loaded.
+            // Update the view, if already loaded.
         }
     }
     
@@ -51,7 +57,7 @@ class ViewController: NSViewController, NSSearchFieldDelegate {
         print("App is clicked: \(sender.title)")
         self.allWindows[sender.title]?.activate()
     }
-
+    
     func controlTextDidChange(_ obj: Notification){
         let textField = obj.object as! NSTextField
         let text = textField.stringValue
@@ -60,19 +66,25 @@ class ViewController: NSViewController, NSSearchFieldDelegate {
     }
     
     func filterAndSetupAppList(name: String) {
+        windowNameList = []
+
+        
         if name.count > 0 {
             for item in stackView.arrangedSubviews {
                 stackView.removeArrangedSubview(item)
                 item.removeFromSuperview()
             }
         }
-
+        
+        
         for (key, value) in self.allWindows {
-            if key.contains(name) && !key.contains("("){
+            let isUserApp = value.executableURL?.relativeString.contains("Applications")
+            if key.contains(name) && !key.contains("(") && isUserApp! {
                 addButtonToStackView(stackView: stackView, title: key, icon: value.icon!)
-                
-            } 
+                windowNameList.append(key)
+            }
         }
+                
     }
     
     func addButtonToStackView( stackView: NSStackView, title: String, icon: NSImage ) {
@@ -93,24 +105,23 @@ class ViewController: NSViewController, NSSearchFieldDelegate {
             
             return true
         }
-//            else if (commandSelector == #selector(NSResponder.deleteForward(_:))) {
-//            // Do something against DELETE key
-//            return true
-//        } else if (commandSelector == #selector(NSResponder.deleteBackward(_:))) {
-//            // Do something against BACKSPACE key
-//            return true
-//        } else if (commandSelector == #selector(NSResponder.insertTab(_:))) {
-//            // Do something against TAB key
-//            return true
-//        } else if (commandSelector == #selector(NSResponder.cancelOperation(_:))) {
-//            // Do something against ESCAPE key
-//            return true
-//        }
+        //            else if (commandSelector == #selector(NSResponder.deleteForward(_:))) {
+        //            // Do something against DELETE key
+        //            return true
+        //        } else if (commandSelector == #selector(NSResponder.deleteBackward(_:))) {
+        //            // Do something against BACKSPACE key
+        //            return true
+        //        } else if (commandSelector == #selector(NSResponder.insertTab(_:))) {
+        //            // Do something against TAB key
+        //            return true
+        //        } else if (commandSelector == #selector(NSResponder.cancelOperation(_:))) {
+        //            // Do something against ESCAPE key
+        //            return true
+        //        }
         
         // return true if the action was handled; otherwise false
         return false
     }
     
-
 }
 
