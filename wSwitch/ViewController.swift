@@ -11,41 +11,45 @@ class ViewController: NSViewController, NSSearchFieldDelegate {
     @IBOutlet weak var searchField: NSSearchField!
     @IBOutlet weak var windowList: NSScrollView!
     var windowHandler = WindowHandler()
-    var allWindows: Dictionary<String, NSRunningApplication> = [:]
+    var allWindows: [WindowInfo] = []
+    var filteredWindows: [WindowInfo] = []
     @IBOutlet weak var tableView: NSTableView!
     var tableCell: NSTableCellView!
     @IBOutlet weak var stackView: NSStackView!
-    
-    
-    
-    
-    var windowNameList: Array<String> = []
     
     
     override func viewDidLoad() {
         super.viewDidLoad()
         
         self.searchField.delegate = self
-        self.allWindows = windowHandler.getWindowList()
+        refreshWindowList()
         
-//        stackView = NSStackView()
-//        stackView.orientation = .vertical
-//        stackView.alignment = .centerX
-//        stackView.distribution = .fillEqually
-//        stackView.translatesAutoresizingMaskIntoConstraints = false
-        
-//        windowList.documentView = stackView
-        
-        filterAndSetupAppList(name: "")
-        
+        // Make search field first responder
+        view.window?.makeFirstResponder(searchField)
     }
     
     override func viewWillAppear() {
         super.viewWillAppear()
         view.window?.isOpaque = false
         view.window?.backgroundColor = NSColor(red: 1, green: 1, blue: 1, alpha: 0.8)
+        
+        // Refresh window list when view appears
+        refreshWindowList()
+        
+        // Focus search field
+        view.window?.makeFirstResponder(searchField)
     }
     
+    func refreshWindowList() {
+        // Get all windows
+        self.allWindows = windowHandler.getAllWindows()
+        
+        // Start with all windows visible
+        self.filteredWindows = self.allWindows
+        
+        // Display all windows
+        updateStackView()
+    }
     
     override var representedObject: Any? {
         didSet {
@@ -53,75 +57,90 @@ class ViewController: NSViewController, NSSearchFieldDelegate {
         }
     }
     
-    @objc func appClick(_ sender: NSButton){
-        print("App is clicked: \(sender.title)")
-        self.allWindows[sender.title]?.activate()
+    @objc func windowButtonClick(_ sender: NSButton) {
+        print("Window clicked: \(sender.title)")
+        
+        // Find the window info by button tag
+        let index = sender.tag
+        if index >= 0 && index < filteredWindows.count {
+            let windowInfo = filteredWindows[index]
+            windowHandler.focusWindow(windowInfo)
+            
+            // Hide the app after switching
+            NSRunningApplication.current.hide()
+        }
     }
     
-    func controlTextDidChange(_ obj: Notification){
+    func controlTextDidChange(_ obj: Notification) {
         let textField = obj.object as! NSTextField
-        let text = textField.stringValue
-        print("Change: \(text)")
-        filterAndSetupAppList(name: text)
+        let searchText = textField.stringValue
+        print("Search text: \(searchText)")
+        
+        filterWindows(searchText: searchText)
     }
     
-    func filterAndSetupAppList(name: String) {
-        windowNameList = []
-
-        
-        if name.count > 0 {
-            for item in stackView.arrangedSubviews {
-                stackView.removeArrangedSubview(item)
-                item.removeFromSuperview()
+    func filterWindows(searchText: String) {
+        if searchText.isEmpty {
+            // Show all windows if search is empty
+            filteredWindows = allWindows
+        } else {
+            // Filter windows based on search text
+            filteredWindows = allWindows.filter { windowInfo in
+                windowInfo.title.lowercased().contains(searchText.lowercased())
             }
         }
         
-        
-        for (key, value) in self.allWindows {
-            let isUserApp = value.executableURL?.relativeString.contains("Applications")
-            if key.contains(name) && !key.contains("(") && isUserApp! {
-                addButtonToStackView(stackView: stackView, title: key, icon: value.icon!)
-                windowNameList.append(key)
-            }
-        }
-                
+        updateStackView()
     }
     
-    func addButtonToStackView( stackView: NSStackView, title: String, icon: NSImage ) {
-        let appButton = NSButton(title: title, image: icon, target: self, action: #selector(appClick))
-        stackView.addArrangedSubview(appButton)
+    func updateStackView() {
+        // Clear existing views
+        for view in stackView.arrangedSubviews {
+            stackView.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        
+        // Add filtered windows
+        for (index, windowInfo) in filteredWindows.enumerated() {
+            let button = createWindowButton(windowInfo: windowInfo, index: index)
+            stackView.addArrangedSubview(button)
+        }
+    }
+    
+    func createWindowButton(windowInfo: WindowInfo, index: Int) -> NSButton {
+        let button = NSButton(title: windowInfo.title,
+                             image: windowInfo.app.icon ?? NSImage(),
+                             target: self,
+                             action: #selector(windowButtonClick))
+        button.tag = index
+        button.imagePosition = .imageLeft
+        button.alignment = .left
+        button.isBordered = false
+        button.bezelStyle = .regularSquare
+        
+        // Style the button
+        if let cell = button.cell as? NSButtonCell {
+            cell.highlightsBy = .changeBackgroundCellMask
+        }
+        
+        return button
     }
     
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        if (commandSelector == #selector(NSResponder.insertNewline(_:))) {
-            // Do something against ENTER key
-            if let stackView = stackView, let firstButton = stackView.arrangedSubviews[0] as? NSButton {
-                // Use 'firstButton' safely as NSButton
-                print(firstButton.title)
-                self.allWindows[firstButton.title]?.activate()
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            // Enter key pressed - activate first window in filtered list
+            if !filteredWindows.isEmpty {
+                let firstWindow = filteredWindows[0]
+                windowHandler.focusWindow(firstWindow)
+                NSRunningApplication.current.hide()
             }
-            print("enter")
+            return true
+        } else if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            // Escape key pressed - hide the app
             NSRunningApplication.current.hide()
-            
             return true
         }
-        //            else if (commandSelector == #selector(NSResponder.deleteForward(_:))) {
-        //            // Do something against DELETE key
-        //            return true
-        //        } else if (commandSelector == #selector(NSResponder.deleteBackward(_:))) {
-        //            // Do something against BACKSPACE key
-        //            return true
-        //        } else if (commandSelector == #selector(NSResponder.insertTab(_:))) {
-        //            // Do something against TAB key
-        //            return true
-        //        } else if (commandSelector == #selector(NSResponder.cancelOperation(_:))) {
-        //            // Do something against ESCAPE key
-        //            return true
-        //        }
         
-        // return true if the action was handled; otherwise false
         return false
     }
-    
 }
-
