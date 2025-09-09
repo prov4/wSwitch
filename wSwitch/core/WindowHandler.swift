@@ -8,6 +8,7 @@
 import Foundation
 import AppKit
 import ApplicationServices
+import CoreGraphics
 
 struct WindowInfo {
     let title: String
@@ -53,6 +54,8 @@ class WindowHandler {
     
     private func getWindowsForApp(_ app: NSRunningApplication) -> [WindowInfo]? {
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        
+        let allWindows = getAllWindowsAcrossSpaces()        
         
         var windowRefs: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowRefs)
@@ -105,6 +108,43 @@ class WindowHandler {
         }
         
         return windowInfos
+    }
+    
+    // Add this method to WindowHandler class:
+    private func getAllWindowsAcrossSpaces() -> [(CGWindowID, String, String, pid_t)] {
+        var allWindowsInfo: [(CGWindowID, String, String, pid_t)] = []
+        
+        // Get ALL windows across ALL spaces
+        let options: CGWindowListOption = [.optionAll, .excludeDesktopElements]
+        guard let windowList = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return allWindowsInfo
+        }
+        
+        for windowInfo in windowList {
+            print("appname: ")
+            print(windowInfo[kCGWindowOwnerName as String])
+            // Filter out windows we don't want
+            guard let windowLayer = windowInfo[kCGWindowLayer as String] as? Int,
+                  windowLayer == 0, // Normal windows only
+                  let windowAlpha = windowInfo[kCGWindowAlpha as String] as? Double,
+                  windowAlpha > 0, // Visible windows only
+                  let bounds = windowInfo[kCGWindowBounds as String] as? [String: Any],
+                  let width = bounds["Width"] as? Double,
+                  let height = bounds["Height"] as? Double,
+                  width > 50 && height > 50 // Skip tiny windows
+            else { continue }
+            
+            let windowID = windowInfo[kCGWindowNumber as String] as? CGWindowID ?? 0
+            let windowTitle = windowInfo[kCGWindowName as String] as? String ?? ""
+            let appName = windowInfo[kCGWindowOwnerName as String] as? String ?? ""
+            let pid = windowInfo[kCGWindowOwnerPID as String] as? pid_t ?? 0
+            
+            if !windowTitle.isEmpty {
+                allWindowsInfo.append((windowID, windowTitle, appName, pid))
+            }
+        }
+        
+        return allWindowsInfo
     }
     
     private func getWindowSpaceID(window: AXUIElement) -> Int? {

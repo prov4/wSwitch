@@ -48,7 +48,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
         if let button = statusItem?.button {
-            button.title = "wS" // You can also use an icon here with button.image
+            button.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: "wSwitch")
             button.action = #selector(statusBarButtonClicked(_:))
             button.target = self
         }
