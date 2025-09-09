@@ -13,6 +13,7 @@ struct WindowInfo {
     let title: String
     let app: NSRunningApplication
     let windowRef: AXUIElement?
+    let spaceID: Int? // Track which space the window is on
 }
 
 class WindowHandler {
@@ -31,6 +32,20 @@ class WindowHandler {
             for windowInfo in windowsForApp {
                 allWindowInfos.append(windowInfo)
             }
+        }
+        
+        // Sort windows - you can customize this
+        // This puts windows from current space first, then others
+        allWindowInfos.sort { (w1, w2) in
+            if let space1 = w1.spaceID, let space2 = w2.spaceID {
+                let currentSpace = getCurrentSpaceID()
+                if space1 == currentSpace && space2 != currentSpace {
+                    return true
+                } else if space1 != currentSpace && space2 == currentSpace {
+                    return false
+                }
+            }
+            return false
         }
         
         return allWindowInfos
@@ -53,13 +68,37 @@ class WindowHandler {
             var titleRef: CFTypeRef?
             let titleResult = AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef)
             
+            // Check if window is minimized
+            var minimizedRef: CFTypeRef?
+            let minimizedResult = AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimizedRef)
+            let isMinimized = (minimizedResult == .success) && (minimizedRef as? Bool ?? false)
+            
+            // Get window subrole to filter out certain window types
+            var subroleRef: CFTypeRef?
+            _ = AXUIElementCopyAttributeValue(window, kAXSubroleAttribute as CFString, &subroleRef)
+            let subrole = subroleRef as? String
+            
+            // Skip certain window types (like floating panels, tooltips, etc.)
+            let skipSubroles = ["AXFloatingWindow", "AXSystemFloatingWindow", "AXTooltip"]
+            if let subrole = subrole, skipSubroles.contains(subrole) {
+                continue
+            }
+            
             if titleResult == .success,
                let title = titleRef as? String,
                !title.isEmpty {
+                
+                // Try to determine which space the window is on
+                let spaceID = getWindowSpaceID(window: window)
+                
+                // Include minimized windows with a marker
+                let displayTitle = isMinimized ? "\(title) (minimized) - \(app.localizedName ?? "")" : "\(title) - \(app.localizedName ?? "")"
+                
                 let windowInfo = WindowInfo(
-                    title: "\(title) - \(app.localizedName ?? "")",
+                    title: displayTitle,
                     app: app,
-                    windowRef: window
+                    windowRef: window,
+                    spaceID: spaceID
                 )
                 windowInfos.append(windowInfo)
             }
@@ -68,13 +107,43 @@ class WindowHandler {
         return windowInfos
     }
     
+    private func getWindowSpaceID(window: AXUIElement) -> Int? {
+        // This is a simplified approach - getting actual space IDs requires private APIs
+        // or more complex CoreGraphics calls. For now, we'll return nil
+        // You could potentially use CGWindowListCopyWindowInfo to get more details
+        return nil
+    }
+    
+    private func getCurrentSpaceID() -> Int? {
+        // Similarly, getting current space ID reliably requires private APIs
+        // This is a placeholder
+        return nil
+    }
+    
     func focusWindow(_ windowInfo: WindowInfo) {
         // First activate the app
         windowInfo.app.activate(options: [.activateIgnoringOtherApps])
         
-        // Then raise the specific window
         if let window = windowInfo.windowRef {
+            // Check if window is minimized and unminimize it
+            var minimizedRef: CFTypeRef?
+            let minimizedResult = AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimizedRef)
+            if minimizedResult == .success, let isMinimized = minimizedRef as? Bool, isMinimized {
+                AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, false as CFTypeRef)
+            }
+            
+            // Raise the window
             AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+            
+            // Try to focus the window
+            var focusedRef: CFTypeRef?
+            let focusedResult = AXUIElementCopyAttributeValue(window, kAXFocusedAttribute as CFString, &focusedRef)
+            if focusedResult == .success {
+                AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, true as CFTypeRef)
+            }
+            
+            // If window is on another space, this should trigger a space switch
+            // macOS will automatically switch to the space containing the window
         }
     }
     

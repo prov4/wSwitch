@@ -30,14 +30,37 @@ class ViewController: NSViewController, NSSearchFieldDelegate {
     
     override func viewWillAppear() {
         super.viewWillAppear()
-        view.window?.isOpaque = false
-        view.window?.backgroundColor = NSColor(red: 1, green: 1, blue: 1, alpha: 0.8)
+        
+        // Configure window appearance
+        if let window = view.window {
+            window.isOpaque = false
+            window.backgroundColor = NSColor(red: 1, green: 1, blue: 1, alpha: 0.95)
+            window.hasShadow = true
+            
+            // Force window to front
+            window.orderFrontRegardless()
+            window.makeKeyAndOrderFront(nil)
+            
+            // Ensure the window is active
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        
+        // Clear search field when window appears
+        searchField.stringValue = ""
         
         // Refresh window list when view appears
         refreshWindowList()
         
-        // Focus search field
+        // Focus search field immediately and after a brief delay
         view.window?.makeFirstResponder(searchField)
+        searchField.becomeFirstResponder()
+        
+        // Double-ensure focus after window is fully shown
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self = self else { return }
+            self.view.window?.makeFirstResponder(self.searchField)
+            self.searchField.selectText(nil)
+        }
     }
     
     func refreshWindowList() {
@@ -66,8 +89,8 @@ class ViewController: NSViewController, NSSearchFieldDelegate {
             let windowInfo = filteredWindows[index]
             windowHandler.focusWindow(windowInfo)
             
-            // Hide the app after switching
-            NSRunningApplication.current.hide()
+            // Hide the app window and return to tray
+            hideAppWindow()
         }
     }
     
@@ -132,15 +155,23 @@ class ViewController: NSViewController, NSSearchFieldDelegate {
             if !filteredWindows.isEmpty {
                 let firstWindow = filteredWindows[0]
                 windowHandler.focusWindow(firstWindow)
-                NSRunningApplication.current.hide()
+                hideAppWindow()
             }
             return true
         } else if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-            // Escape key pressed - hide the app
-            NSRunningApplication.current.hide()
+            // Escape key pressed - hide the app window
+            hideAppWindow()
             return true
         }
         
         return false
+    }
+    
+    private func hideAppWindow() {
+        // Hide window and return to tray
+        view.window?.close()
+        
+        // Return to accessory mode (hide from dock)
+        NSApp.setActivationPolicy(.accessory)
     }
 }

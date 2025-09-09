@@ -6,33 +6,135 @@
 //
 
 import Cocoa
+import Carbon
 
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
     
     var eventMonitor: Any?
-
+    var statusItem: NSStatusItem?
+    var mainWindowController: NSWindowController?
+    
     func applicationDidFinishLaunching(_ aNotification: Notification) {
-        // Insert code here to initialize your application
         NSApplication.shared.delegate = self
         
         // Check for accessibility permissions
         checkAccessibilityPermissions()
         
-        // Activate the app and bring it to front
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        // Setup status bar item (tray icon)
+        setupStatusBarItem()
         
-        // Make sure the main window is key and ordered front
+        // Configure the main window but keep it hidden
         if let window = NSApplication.shared.windows.first {
-            window.center()
-            window.isReleasedWhenClosed = false
-            window.makeKeyAndOrderFront(nil)
-            window.level = .floating // Optional: keeps window above others
+            window.isReleasedWhenClosed = false // Important: prevent window from being released
+            window.hidesOnDeactivate = false // Don't auto-hide when app loses focus
+            window.isMovableByWindowBackground = true
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.close()
         }
         
-        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { (event) in
-                self.handleGlobalKeyboardEvent(event)
-               }
+        // Store reference to main window controller
+        mainWindowController = NSApplication.shared.windows.first?.windowController
+        
+        // Hide the dock icon - app will run in tray only
+        NSApp.setActivationPolicy(.accessory)
+        
+        // Register global hotkey for Opt+Cmd+E
+        registerGlobalHotkey()
+    }
+    
+    func setupStatusBarItem() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        
+        if let button = statusItem?.button {
+            button.title = "wS" // You can also use an icon here with button.image
+            button.action = #selector(statusBarButtonClicked(_:))
+            button.target = self
+        }
+        
+        // Create menu for status bar item
+        let menu = NSMenu()
+        menu.addItem(NSMenuItem(title: "Show Window", action: #selector(showMainWindow), keyEquivalent: ""))
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        
+        statusItem?.menu = menu
+    }
+    
+    @objc func statusBarButtonClicked(_ sender: Any?) {
+        // Left click behavior - you could also show window directly instead of menu
+        // showMainWindow()
+    }
+    
+    @objc func showMainWindow() {
+        // Show the app in dock when window is visible
+        NSApp.setActivationPolicy(.regular)
+        
+        // Activate the app
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        
+        // Show and focus the window
+        if let window = NSApplication.shared.windows.first {
+            // Make window appear on all spaces (Mission Control desktops)
+            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            
+            window.center()
+            window.makeKeyAndOrderFront(nil)
+            window.level = .floating
+            
+            // Focus the search field
+            if let viewController = window.contentViewController as? ViewController {
+                window.makeFirstResponder(viewController.searchField)
+                // Refresh window list when showing
+                viewController.refreshWindowList()
+            }
+        }
+    }
+    
+    func hideMainWindow() {
+        // Hide window
+        NSApplication.shared.windows.first?.close()
+        
+        // Return to accessory mode (hide from dock)
+        NSApp.setActivationPolicy(.accessory)
+    }
+    
+    func registerGlobalHotkey() {
+        // Remove any existing monitor
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        
+        // Register global event monitor for Opt+Cmd+E
+        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            self?.handleGlobalKeyboardEvent(event)
+        }
+        
+        // Also register local monitor for when app is active
+        NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            if self?.handleGlobalKeyboardEvent(event) == true {
+                return nil // Consume the event
+            }
+            return event
+        }
+    }
+    
+    @discardableResult
+    func handleGlobalKeyboardEvent(_ event: NSEvent) -> Bool {
+        // Check for Opt+Cmd+E (keyCode 14 is 'E')
+        if event.modifierFlags.contains([.option, .command]) && event.keyCode == 14 {
+            showMainWindow()
+            return true
+        }
+        
+        // Keep your existing Alt+Tab functionality if desired
+        if event.modifierFlags.contains(.option) && event.keyCode == 48 {
+            showMainWindow()
+            return true
+        }
+        
+        return false
     }
     
     func checkAccessibilityPermissions() {
@@ -48,38 +150,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             alert.runModal()
         }
     }
-
+    
     func applicationWillTerminate(_ aNotification: Notification) {
-        // Insert code here to tear down your application
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
         }
     }
-
+    
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         return true
     }
     
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-            // Bring app window when dock icon gets clicked
-            if !flag {
-                for window: AnyObject in sender.windows {
-                    window.makeKeyAndOrderFront(self)
-                }
-            }
-            
-            return true
+        // Show window when dock icon is clicked (if visible)
+        showMainWindow()
+        return true
     }
     
-    func handleGlobalKeyboardEvent(_ event: NSEvent) {
-        if event.modifierFlags.contains(.option) && event.keyCode == 48 {
-            print("Alt + Tab pressed!")
-            // Show and focus the window when Alt+Tab is pressed
-            NSApplication.shared.activate(ignoringOtherApps: true)
-            if let window = NSApplication.shared.windows.first {
-                window.makeKeyAndOrderFront(nil)
-            }
-        }
+    // Add this to handle when window is closed
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        // Don't quit when window is closed, just hide to tray
+        hideMainWindow()
+        return false
     }
-
 }
